@@ -1,6 +1,7 @@
 import json, sqlite3, click, functools, os, hashlib,time, random, sys, bcrypt
 from flask import Flask, current_app, g, session, redirect, render_template, url_for, request
-
+from datetime import timedelta
+from secrets import token_urlsafe
 
 def validate_password(password):
     errors = []
@@ -64,7 +65,14 @@ INSERT INTO notes VALUES(null,2,"1993-09-23 12:10:10","i want lunch pls",1234567
 ### APPLICATION SETUP ###
 app = Flask(__name__)
 app.database = "db.sqlite3"
-app.secret_key = os.urandom(32)
+app.secret_key = token_urlsafe(32)
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    SESSION_PERMANENT=True,
+    SESSION_COOKIE_SECURE=True,  # Only send cookie over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent JavaScript access to session cookie
+    SESSION_COOKIE_SAMESITE='Lax'  # Protect against CSRF
+)
 #print(bcrypt.hashpw("password", "whatever"))
 #print(bcrypt.hashpw("omgMPC", "whatever2"))
 
@@ -133,28 +141,41 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        
-        db = connect_db()
-        c = db.cursor()
+        try:
+            db = connect_db()
+            c = db.cursor()
 
-        Statement = "SELECT * FROM users WHERE username = ?"
-        c.execute(Statement, (username,))
-        result = c.fetchall()
-        
-        if len(result) == 1:
-            stored_hash = result[0][2]  # The stored hashed password
+            Statement = "SELECT * FROM users WHERE username = ?"
+            c.execute(Statement, (username,))
+            result = c.fetchall()
             
-            # Directly compare the password with stored hash
-            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
-                session.clear()
-                session['logged_in'] = True
-                session['userid'] = result[0][0]
-                session['username'] = result[0][1]
-                return redirect(url_for('index'))
+            if len(result) == 1:
+                stored_hash = result[0][2]  # The stored hashed password
+                
+                # Directly compare the password with stored hash
+                if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+                    session.clear()
+                    session.permanent = True
+                    session['logged_in'] = True
+                    session['userid'] = result[0][0]
+                    session['username'] = result[0][1]
+
+                    session['created_at'] = time.time()
+                    session['ip_address'] = request.remote_addr
+                    session['user_agent'] = request.user_agent.string
+
+                    return redirect(url_for('index'))
+                else:
+                    error = "Wrong username or password!"
             else:
                 error = "Wrong username or password!"
-        else:
-            error = "Wrong username or password!"
+        except Exception as e:
+            # Log the error securely, don't expose details to user
+            app.logger.error(f"Login error: {str(e)}")
+            error = "An error occurred during login"
+        finally:
+            if 'db' in locals():
+                db.close()
             
     return render_template('login.html', error=error)
 
@@ -193,9 +214,9 @@ def register():
             salt = bcrypt.gensalt()
             hashedPassword = bcrypt.hashpw(password.encode('utf-8'), salt)
 
-            statement = "INSERT INTO users(id,username,password,salt) VALUES(null,?,?,?);" 
+            statement = "INSERT INTO users(id,username,password) VALUES(null,?,?);" 
             print(statement)
-            c.execute(statement, (username, hashedPassword, salt))
+            c.execute(statement, (username, hashedPassword))
             db.commit()
             db.close()
             return f"""<html>
