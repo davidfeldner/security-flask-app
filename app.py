@@ -2,7 +2,26 @@ import json, sqlite3, click, functools, os, hashlib,time, random, sys, bcrypt
 from flask import Flask, current_app, g, session, redirect, render_template, url_for, request
 
 
-
+def validate_password(password):
+    errors = []
+    
+    if len(password) < 12:
+        errors.append("Password must be at least 12 characters long")
+    
+    if not any(c.isupper() for c in password):
+        errors.append("Password must contain at least one uppercase letter")
+    
+    if not any(c.islower() for c in password):
+        errors.append("Password must contain at least one lowercase letter")
+    
+    if not any(c.isdigit() for c in password):
+        errors.append("Password must contain at least one number")
+    
+    if not any(c in "!@#$%^&*" for c in password):
+        errors.append("Password must contain at least one special character (!@#$%^&*)")
+    
+    # Return tuple of (is_valid, error_messages)
+    return (len(errors) == 0, errors)
 
 ### DATABASE FUNCTIONS ###
 
@@ -150,6 +169,13 @@ def register():
 
         username = request.form['username']
         password = request.form['password']
+
+        # Validate password
+        is_valid, password_errors = validate_password(password)
+        if not is_valid:
+            return render_template('register.html', 
+                                usererror="",
+                                passworderror=password_errors)
         db = connect_db()
         c = db.cursor()
 
@@ -207,3 +233,4 @@ if __name__ == "__main__":
         print("'python3 app.py' (to start on port 5000)")
         print("or")
         print("'sudo python3 app.py 80' (to run on any other port)")
+
