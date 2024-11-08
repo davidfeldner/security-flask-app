@@ -105,7 +105,7 @@ def notes():
             c = db.cursor()
             statement = "INSERT INTO notes(id,assocUser,dateWritten,note,publicID) VALUES(null,?,?,?,?);"
             print(statement)
-            c.execute(statement, (session['userid'],time.strftime('%Y-%m-%d %H:%M:%S'),note,random.randrange(1000000000, 9999999999)))
+            c.execute(statement, (session['userid'],time.strftime('%Y-%m-%d %H:%M:%S'),note,random.randrange(1, 10000)))
             db.commit()
             db.close()
         elif request.form['submit_button'] == 'import note':
