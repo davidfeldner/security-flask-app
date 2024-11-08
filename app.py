@@ -1,4 +1,4 @@
-import json, sqlite3, click, functools, os, hashlib,time, random, sys
+import json, sqlite3, click, functools, os, hashlib,time, random, sys, bcrypt
 from flask import Flask, current_app, g, session, redirect, render_template, url_for, request
 
 
@@ -29,11 +29,12 @@ CREATE TABLE notes (
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    salt TEXT NOT NULL
 );
 
-INSERT INTO users VALUES(null,"admin", "password");
-INSERT INTO users VALUES(null,"bernardo", "omgMPC");
+INSERT INTO users VALUES(null,"a", "password","whatever");
+INSERT INTO users VALUES(null,"b", "omgMPC", "whatever2");
 INSERT INTO notes VALUES(null,2,"1993-09-23 10:10:10","hello my friend",1234567890);
 INSERT INTO notes VALUES(null,2,"1993-09-23 12:10:10","i want lunch pls",1234567891);
 
@@ -45,6 +46,8 @@ INSERT INTO notes VALUES(null,2,"1993-09-23 12:10:10","i want lunch pls",1234567
 app = Flask(__name__)
 app.database = "db.sqlite3"
 app.secret_key = os.urandom(32)
+#print(bcrypt.hashpw("password", "whatever"))
+#print(bcrypt.hashpw("omgMPC", "whatever2"))
 
 ### ADMINISTRATOR'S PANEL ###
 def login_required(view):
@@ -111,21 +114,30 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        
         db = connect_db()
         c = db.cursor()
-        statement = "SELECT * FROM users WHERE username = ? AND password = ?;"
-        c.execute(statement, (username, password))
-        result = c.fetchall()
 
-        if len(result) > 0:
-            session.clear()
-            session['logged_in'] = True
-            session['userid'] = result[0][0]
-            session['username']=result[0][1]
-            return redirect(url_for('index'))
+        Statement = "SELECT * FROM users WHERE username = ?"
+        c.execute(Statement, (username,))
+        result = c.fetchall()
+        
+        if len(result) > 0 and len(result) < 2:
+            stored_hash = result[0][2]  # The stored hashed password
+            
+            # Directly compare the password with stored hash
+            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+                session.clear()
+                session['logged_in'] = True
+                session['userid'] = result[0][0]
+                session['username'] = result[0][1]
+                return redirect(url_for('index'))
+            else:
+                error = "Wrong username or password!"
         else:
             error = "Wrong username or password!"
-    return render_template('login.html',error=error)
+            
+    return render_template('login.html', error=error)
 
 
 @app.route("/register/", methods=('GET', 'POST'))
@@ -140,22 +152,24 @@ def register():
         password = request.form['password']
         db = connect_db()
         c = db.cursor()
-        pass_statement = "SELECT * FROM users WHERE password = ?;" 
+
         user_statement = "SELECT * FROM users WHERE username = ?;"
-        c.execute(pass_statement, (password,))
-        if(len(c.fetchall())>0):
-            errored = True
-            passworderror = "That password is already in use by someone else!"
+
 
         c.execute(user_statement, (username,))
-        if(len(c.fetchall())>0):
+        result = c.fetchall()
+        if len(result) > 0:
             errored = True
             usererror = "That username is already in use by someone else!"
+ 
 
         if(not errored):
-            statement = "INSERT INTO users(id,username,password) VALUES(null,?,?);" 
+            salt = bcrypt.gensalt()
+            hashedPassword = bcrypt.hashpw(password.encode('utf-8'), salt)
+
+            statement = "INSERT INTO users(id,username,password,salt) VALUES(null,?,?,?);" 
             print(statement)
-            c.execute(statement, (username, password))
+            c.execute(statement, (username, hashedPassword, salt))
             db.commit()
             db.close()
             return f"""<html>
