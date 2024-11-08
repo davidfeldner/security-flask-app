@@ -122,7 +122,7 @@ def login():
         c.execute(Statement, (username,))
         result = c.fetchall()
         
-        if len(result) > 0 and len(result) < 2:
+        if len(result) == 1:
             stored_hash = result[0][2]  # The stored hashed password
             
             # Directly compare the password with stored hash
